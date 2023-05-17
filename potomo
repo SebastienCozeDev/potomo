@@ -1,0 +1,161 @@
+#!/bin/bash
+
+INFO_COLOR="\033[1;33m"     # Yellow
+USAGE_COLOR="\033[1;33m"    # Yellow
+ERROR_COLOR="\033[0;31m"    # Red
+RESET_COLOR="\033[0m"       # Init color
+
+INPUT_FILE_PARAM="--finput"
+OUTPUT_FILE_PARAM="--foutput"
+UNINSTALL_PARAM="--uninstall-library"
+WITHOUT_TEXT_PARAM="--nmsg"
+
+
+input_file=""
+output_file=""
+uninstall_library=false
+without_text=false
+compile=false
+
+
+
+# FUNCTIONS
+
+# Display command usages
+print_usages () {
+    print_usage "$0 $INPUT_FILE_PARAM <input_file.po> [$OUTPUT_FILE_PARAM <output_file.mo>] [$WITHOUT_TEXT_PARAM]" >&2
+    print_usage "$0 $UNINSTALL_PARAM [$WITHOUT_TEXT_PARAM]" >&2
+}
+
+# Display usage
+print_usage() {
+    echo -e "${USAGE_COLOR}[USAGE] $1${RESET_COLOR}" >&2
+}
+
+# Display information
+print_info() {
+    echo -e "${INFO_COLOR}[INFO] $1${RESET_COLOR}" >&2
+}
+
+# Display error
+print_error() {
+    echo -e "${ERROR_COLOR}[ERROR] $1${RESET_COLOR}" >&2
+}
+
+# Show or hidden message
+show_or_hidden() {
+    if [ "$without_text" = true ]; then
+        "$@" > /dev/null 2>&1
+    else
+        "$@"
+    fi
+}
+
+# Uninstall gettext library
+uninstall_gettext_library() {
+    if ! dpkg -s gettext &> /dev/null; then
+        print_info "The gettext library is not installed."
+    else
+        print_info "Uninstalling gettext library..."
+        if sudo apt remove gettext -y; then
+            print_info "The gettext library has been uninstalled successfully."
+        else
+            print_error "Failed to uninstall gettext library."
+            exit 1
+        fi
+    fi
+}
+
+
+
+# SCRIPT
+
+# Check command line arguments
+if [[ $# -eq 0 ]]; then
+    print_error "No arguments provided."
+    print_usages
+    exit 1
+fi
+
+# Use arguments
+while [[ $# -gt 0 ]]; do
+    key="$1"
+    case $key in
+        $INPUT_FILE_PARAM)
+            input_file="$2"
+            shift
+            shift
+            ;;
+        $OUTPUT_FILE_PARAM)
+            output_file="$2"
+            shift
+            shift
+            ;;
+        $UNINSTALL_PARAM)
+            uninstall_library=true
+            shift
+            ;;
+        $WITHOUT_TEXT_PARAM)
+            without_text=true
+            shift
+            ;;
+        *)
+            print_error "Argument inconnu : $1"
+            print_usages
+            exit 1
+            ;;
+    esac
+done
+
+# Show or hide output text
+if [ "$without_text" = true ]; then
+    exec 1>/dev/null
+    exec 2>/dev/null
+fi
+
+# Check if an input filename is specified
+if [ -z "$input_file" ]; then
+    if  [ "$uninstall_library" = false ]; then
+        print_error "Input filenane isn't specified."
+        exit 1
+    fi
+else
+    # Check if .po file exist
+    if [ ! -f "$input_file" ]; then
+        print_error "File doesn't exist."
+        exit 1
+    fi
+    compile=true
+fi
+
+# Check if an output filename is specified
+if [ -z "$output_file" ]; then
+    output_file="${input_file%.*}.mo"
+fi
+
+# Check if gettext is installed
+if ! [[ "$uninstall_library" = true && "$compile" = false ]]; then
+    if ! dpkg -s gettext &> /dev/null; then
+        print_info "The gettext library isn't installed. Installation in progress..."
+        if sudo apt update && sudo apt install gettext -y; then
+            print_info "The gettext library have been installed with success."
+        else
+            print_error "$Failed to install gettext library."
+            exit 1
+        fi
+    else
+        print_info "$The gettext library is already installed."
+    fi
+fi
+
+# Compile file
+if [ "$compile" = true ]; then
+    print_info "Compilation in progress..."
+    msgfmt $input_file -o $output_file
+    print_info "The compilation have been make with success."
+fi
+
+# Uninstall gettext library if requested
+if [ "$uninstall_library" = true ]; then
+    uninstall_gettext_library
+fi
